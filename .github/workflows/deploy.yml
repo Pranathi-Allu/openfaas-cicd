@@ -1,0 +1,67 @@
+name: Deploy OpenFaaS Function via Terraform
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - 'terraform/**'
+
+jobs:
+  terraform-deploy:
+    name: Terraform Deploy
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.6.0
+
+      - name: Setup Minikube
+        uses: medyagh/setup-minikube@latest
+        with:
+          memory: 3800m
+          cpus: 2
+
+      - name: Wait for Minikube
+        run: kubectl wait --for=condition=Ready node/minikube --timeout=60s
+
+      - name: Install OpenFaaS via Helm
+        run: |
+          helm repo add openfaas https://openfaas.github.io/faas-netes/
+          helm repo update
+          kubectl create namespace openfaas --dry-run=client -o yaml | kubectl apply -f -
+          kubectl create namespace openfaas-fn --dry-run=client -o yaml | kubectl apply -f -
+          helm upgrade --install openfaas openfaas/openfaas \
+            --namespace openfaas \
+            --set functionNamespace=openfaas-fn \
+            --set generateBasicAuth=true \
+            --set serviceType=NodePort \
+            --wait --timeout 120s
+
+      - name: Terraform Init
+        working-directory: terraform
+        run: terraform init
+
+      - name: Terraform Validate
+        working-directory: terraform
+        run: terraform validate
+
+      - name: Terraform Plan
+        working-directory: terraform
+        run: terraform plan -out=tfplan
+
+      - name: Terraform Apply
+        working-directory: terraform
+        run: terraform apply -auto-approve tfplan
+
+      - name: Verify Deployment
+        run: |
+          kubectl get deployments -n openfaas-fn
+          kubectl get pods -n openfaas-fn
+          kubectl get services -n openfaas-fn
