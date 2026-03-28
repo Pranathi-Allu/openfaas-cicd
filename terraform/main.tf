@@ -11,18 +11,6 @@ provider "kubernetes" {
   config_path = "~/.kube/config"
 }
 
-resource "kubernetes_namespace" "openfaas" {
-  metadata {
-    name = "openfaas"
-  }
-}
-
-resource "kubernetes_namespace" "openfaas_fn" {
-  metadata {
-    name = "openfaas-fn"
-  }
-}
-
 resource "kubernetes_deployment" "hello_python" {
   metadata {
     name      = "hello-python"
@@ -60,8 +48,6 @@ resource "kubernetes_deployment" "hello_python" {
       }
     }
   }
-
-  depends_on = [kubernetes_namespace.openfaas_fn]
 }
 
 resource "kubernetes_service" "hello_python" {
@@ -82,6 +68,4 @@ resource "kubernetes_service" "hello_python" {
 
     type = "ClusterIP"
   }
-
-  depends_on = [kubernetes_deployment.hello_python]
 }
