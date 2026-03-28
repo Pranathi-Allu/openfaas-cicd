@@ -1,0 +1,52 @@
+name: Destroy OpenFaaS Function via Terraform
+
+on:
+  workflow_dispatch:
+
+jobs:
+  terraform-destroy:
+    name: Terraform Destroy
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.6.0
+
+      - name: Setup Minikube
+        uses: medyagh/setup-minikube@latest
+        with:
+          memory: 3800m
+          cpus: 2
+
+      - name: Wait for Minikube
+        run: kubectl wait --for=condition=Ready node/minikube --timeout=60s
+
+      - name: Install OpenFaaS via Helm
+        run: |
+          helm repo add openfaas https://openfaas.github.io/faas-netes/
+          helm repo update
+          kubectl create namespace openfaas --dry-run=client -o yaml | kubectl apply -f -
+          kubectl create namespace openfaas-fn --dry-run=client -o yaml | kubectl apply -f -
+          helm upgrade --install openfaas openfaas/openfaas \
+            --namespace openfaas \
+            --set functionNamespace=openfaas-fn \
+            --set generateBasicAuth=true \
+            --set serviceType=NodePort \
+            --wait --timeout 120s
+
+      - name: Terraform Init
+        working-directory: terraform
+        run: terraform init
+
+      - name: Terraform Destroy
+        working-directory: terraform
+        run: terraform destroy -auto-approve
+
+      - name: Verify Destruction
+        run: |
+          kubectl get all -n openfaas-fn || echo "Namespace is empty"
